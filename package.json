@@ -1,0 +1,41 @@
+{
+  "name": "water-socks",
+  "version": "0.2.1",
+  "description": "Web server for interacting with a Arduino via serial connection to manage moisture levels and automatically water plants.",
+  "bugs": {
+    "url": "https://github.com/raceconditions/WaterSocks/issues",
+    "email": "raceconditions@gmail.com"
+  },
+  "main": "main.js",
+  "bin": {
+    "watersocks": "./bin/watersocks.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no tests yet!\" && exit 1",
+    "start": "bin/watersocks.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raceconditions/WaterSocks.git"
+  },
+  "keywords": [
+    "moisture",
+    "server",
+    "tcp",
+    "water",
+    "serial",
+    "arduino"
+  ],
+  "author": {
+    "name": "Travis Miller",
+    "email": "raceconditions@gmail.com",
+    "url": "http://blog.raceconditions.net"
+  },
+  "license": "LGPL-2.1+",
+  "dependencies": {
+    "nedb": "^1.8.0",
+    "rpi-gpio": "^0.7.0",
+    "serialport": "~4.0.1",
+    "socket.io": "^1.7.2"
+  }
+}

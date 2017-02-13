@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+        <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+                <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+                <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+                <script src="//www.amcharts.com/lib/3/amcharts.js"></script>
+                <script src="//www.amcharts.com/lib/3/serial.js"></script>
+                <script src="//www.amcharts.com/lib/3/themes/light.js"></script>
+                <title>Water Socks</title>
+        <script src='/socket.io/socket.io.js'></script>
+        <script>
+            var chartData = [];
+
+            var socket = io();
+
+            socket.on('errorMessage', function(val) {
+                  var ul = document.getElementById("messages");
+                  var li = document.createElement("li");
+                  li.style.color = "red";
+                  li.appendChild(document.createTextNode(val));
+                  ul.appendChild(li);
+            });
+            socket.on('message', function(val) {
+                  var ul = document.getElementById("messages");
+                  var li = document.createElement("li");
+                  li.appendChild(document.createTextNode(val));
+                  ul.appendChild(li);
+            });
+            socket.on('sensor', function(dataPoint) {
+                  addChartData(dataPoint);
+            });
+
+            socket.on('toggle', function(val) { document.getElementById('waterBtn').innerHTML = val; });
+
+            function toggle() {
+               socket.emit('toggle', {});
+            }
+
+            function timedOn() {
+                var e = document.getElementById("time");
+                var timeToRun = e.options[e.selectedIndex].value;
+                socket.emit('open', {timeToRun: timeToRun});
+            }
+
+            function addGraph(sensorIndex) {
+                var graph = new AmCharts.AmGraph();
+
+                graph.title = "Sensor " + (chart.graphs.length + 1);
+                graph.valueField = "moistureValue" + sensorIndex;
+                graph.balloonText = "[[title]]: [[value]]";
+                graph.lineThickness = 2;
+
+                chart.addGraph(graph);
+            }
+
+            function addChartData(point) {
+                if(chartData.length > 50) {
+                     chartData.shift();
+                }
+                chartData.push(point);
+                chart.validateData();
+            }
+
+            var chart = AmCharts.makeChart( "chartdiv", {
+                "type": "serial",
+                "theme": "light",
+                "zoomOutButton": {
+                  "backgroundColor": '#000000',
+                  "backgroundAlpha": 0.15
+                },
+                "dataProvider": chartData,
+                "categoryField": "createdAt",
+                "categoryAxis": {
+                  "parseDates": true,
+                  "minPeriod": "ss",
+                  "dashLength": 1,
+                  "gridAlpha": 0.15,
+                  "axisColor": "#DADADA"
+                },
+                "graphs": [ ],
+                "chartCursor": {
+                  "cursorPosition": "mouse"
+                },
+                "chartScrollbar": {
+                  "graph": "g1",
+                  "scrollbarHeight": 40,
+                  "color": "#FFFFFF",
+                  "autoGridCount": true
+                }
+            });
+
+            var updateConfig = function() {
+               $.post("/config", JSON.stringify({
+                  category: "master",
+                  sensorCount: parseInt($("#sensorCount").val()),
+                  sensorPollingFrequency: parseInt($("#sensorPollingFrequency").val()),
+                  autoWatering: $("#autoWatering").prop("checked"),
+                  autoWateringDuration: parseInt($("#autoWateringDuration").val()),
+                  autoWateringThreshold: parseInt($("#autoWateringThreshold").val())
+               }));
+            };
+
+            window.onload = function() {
+               $.get( "/data", function( data ) {
+                  for(var i = 0; i < data.length; i++)
+                     chartData.push(data[i]);
+                  chart.validateData();
+               });
+               $.get( "/config", function( data ) { console.log(data.sensorCount);
+                  for(var i = 1; i <= data.sensorCount; i++) addGraph(i);
+                  $("#sensorCount").val(data.sensorCount);
+                  $("#sensorPollingFrequency").val(data.sensorPollingFrequency);
+                  $("#autoWatering").prop("checked", data.autoWatering);
+                  $("#autoWateringDuration").val(data.autoWateringDuration);
+                  $("#autoWateringThreshold").val(data.autoWateringThreshold);
+               });
+               document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
+               $("#sensorCount").change(updateConfig);
+               $("#sensorPollingFrequency").change(updateConfig);
+               $("#autoWatering").change(updateConfig)
+               $("#autoWateringDuration").change(updateConfig);
+               $("#autoWateringThreshold").change(updateConfig);
+            };
+            window.onresize = function() {
+               document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
+            }
+        </script>
+        <style type="text/css">
+                .top-buffer { margin-top:20px; }
+                #chartdiv {
+                    width: 100%;
+                    height: 600px;
+                }
+        </style>
+        </head>
+        <body>
+            <ul class="nav nav-tabs">
+                <li class="active"><a data-toggle="tab" href="#status">Status</a></li>
+                <li><a data-toggle="tab" href="#watering">Watering</a></li>
+                <li><a data-toggle="tab" href="#config">Configuration</a></li>
+            </ul>
+            <div class="tab-content">
+               <div id="status" class="tab-pane fade in active">
+                    <div class="container">
+                        <div id="chartdiv"></div>
+                    </div>
+               </div>
+               <div id="watering" class="tab-pane fade">
+                    <div class="container">
+                        <div class="row text-center top-buffer">
+                            <button type="button" name="waterBtn" id="waterBtn" onclick="toggle()">Turn Water On</button>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <select id="time">
+                              <option value="5000">5 seconds</option>
+                              <option value="10000">10 seconds</option>
+                              <option value="30000">30 seconds</option>
+                              <option value="60000">1 minute</option>
+                              <option value="120000">2 minutes</option>
+                              <option value="300000">5 minutes</option>
+                            </select>
+                            <button type="button" name="waterTimed" id="waterTimed" onclick="timedOn()">Run Water</button>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <ul id='messages' style="list-style: none;"></ul>
+                        </div>
+                    </div>
+                </div>
+               <div id="config" class="tab-pane fade">
+                    <div class="container">
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="autoWatering">Automatic Watering</label></div>
+                            <div class="col-md-6 text-left"><input type="checkbox" name="autoWatering" id="autoWatering" /></div>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="autoWateringThreshold">Watering Moisture Threshold</label></div>
+                            <div class="col-md-6 text-left"><input type="text" name="autoWateringThreshold" id="autoWateringThreshold" /></div>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="autoWateringDuration">Watering Duration</label></div>
+                            <div class="col-md-6 text-left">
+                              <select id="autoWateringDuration">
+                                <option value="5000">5 seconds</option>
+                                <option value="10000">10 seconds</option>
+                                <option value="30000">30 seconds</option>
+                                <option value="60000">1 minute</option>
+                                <option value="120000">2 minutes</option>
+                                <option value="300000">5 minutes</option>
+                              </select>
+                            </div>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="sensorCount">Sensor Count</label></div>
+                            <div class="col-md-6 text-left"><input type="text" name="sensorCount" id="sensorCount" /></div>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="sensorPollingFrequency">Sensor Polling Frequency</label></div>
+                            <div class="col-md-6 text-left">
+                              <select id="sensorPollingFrequency">
+                                 <option value="2000">2 seconds</option>
+                                 <option value="900000">15 minutes</option>
+                                 <option value="1800000">30 minutes</option>
+                                 <option value="3600000">60 minutes</option>
+                                 <option value="7200000">120 minutes</option>
+                              </select>
+                            </div>
+                        </div>
+                    </div>
+               </div>
+           </div>
+        </body>
+</html>
