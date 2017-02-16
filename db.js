@@ -29,8 +29,9 @@ var Db = function() {
                 sensorCount: 5, 
                 sensorPollingFrequency: 1800000, 
                 autoWatering: true, 
-                autoWateringThreshold: 75, 
-                autoWateringDuration: 60000
+                autoWateringThreshold: 1, 
+                autoWateringDuration: 60000,
+                autoWateringIntervalWaitTime: 7200000
             });
         }
     });
@@ -52,8 +53,8 @@ var Db = function() {
         db.moisture.insert(dataPoint);
     };
 
-    this.getSensorValues = function(pointCount, callback) {
-        db.moisture.find({}).sort({createdAt: 1}).limit(pointCount).exec(function(err, docs) {
+    this.getSensorValues = function(date, callback) {
+        db.moisture.find({createdAt: {$gte: date}}).sort({createdAt: 1}).exec(function(err, docs) {
              return callback(docs);
         });
     };
@@ -62,8 +63,14 @@ var Db = function() {
         db.watering.insert(data);
     };
 
+    this.getLastWatering = function(callback) {
+        db.watering.findOne({}).sort({createdAt: -1}).exec(function(err, docs) {
+            return callback(docs);
+        });
+    };
+
     this.getWaterings = function(date, callback) {
-        db.watering.find({createdAt: {$gte: date.toISOString()}}).sort({createdAt: 1}).exec(function(err, docs) {
+        db.watering.find({createdAt: {$gte: date}}).sort({createdAt: 1}).exec(function(err, docs) {
              return callback(docs);
         });
     };

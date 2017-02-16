@@ -1,2 +1,0 @@
-{"category":"master","sensorCount":5,"sensorPollingFrequency":900000,"autoWatering":true,"autoWateringDuration":60000,"autoWateringThreshold":75,"_id":"HPNqUofWZPgXKMH5","createdAt":{"$$date":1486947061688},"updatedAt":{"$$date":1486947095567}}
-{"category":"master","sensorCount":5,"sensorPollingFrequency":2000,"autoWatering":true,"autoWateringDuration":60000,"autoWateringThreshold":75,"_id":"HPNqUofWZPgXKMH5","createdAt":{"$$date":1486947061688},"updatedAt":{"$$date":1486947665625}}

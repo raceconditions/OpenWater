@@ -32,6 +32,7 @@ var Server = function(port) {
     var waterOn = false;
     var globalSocket;
     var maxTimer;
+    var isWatering = false;
 
     var self = this;
 
@@ -61,7 +62,16 @@ var Server = function(port) {
            res.end(index);
         } else if(req.url == "/data") {
            res.writeHead(200, {'Content-Type': 'application/json'});
-           Db.getSensorValues(50, function(data) {
+           var d = new Date();
+           d.setDate(d.getDate() - 3);
+           Db.getSensorValues(d, function(data) {
+               res.end(JSON.stringify(data));
+           });
+        } else if(req.url == "/watering") {
+           res.writeHead(200, {'Content-Type': 'application/json'});
+           var d = new Date();
+           d.setDate(d.getDate() - 3);
+           Db.getWaterings(d, function(data) {
                res.end(JSON.stringify(data));
            });
         } else if(req.url == "/config" && req.method == "GET") {
@@ -95,7 +105,6 @@ var Server = function(port) {
     };
 
     this.write = function(buffer) {
-        console.log(buffer);
         var dataSet = {date: new Date()};
         var sensorValues = [];
 	var bufferData = buffer.toString('utf8').trim();
@@ -110,9 +119,7 @@ var Server = function(port) {
             }
             Db.saveSensorValues(dataSet);
             dataSet.createdAt = new Date();
-            if(globalSocket != null) {
-               globalSocket.emit("sensor", dataSet);
-            }
+            globalSocketEmit("sensor", dataSet);
             checkWateringThreshold(sensorValues);
         }
     };
@@ -123,16 +130,28 @@ var Server = function(port) {
     }
 
     var checkWateringThreshold = function(sensorValues) {
+        if(isWatering)
+            return;
         var total = 0;
         for(var i = 0; i < sensorValues.length; i++) {
             total += sensorValues[i];
         }
         var avgMoisture = total/sensorValues.length;
-        if(masterConfig.autoWatering && avgMoisture <= masterConfig.autoWateringThreshold) {
-            console.log("Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
-            console.log("Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
-            //openWater({timeToRun: masterConfig.autoWateringDuration});
-        }
+        Db.getLastWatering(function(lastWatering) {  
+           var now = Date.now();
+           if(masterConfig.autoWatering && avgMoisture <= masterConfig.autoWateringThreshold) {
+               var nextAllowableWateringTime;
+               if(lastWatering != null)
+                   nextAllowableWateringTime = new Date(lastWatering.wateringStartTime.getTime() + masterConfig.autoWateringIntervalWaitTime);
+               console.log("Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
+               if(lastWatering == null || nextAllowableWateringTime.getTime() <= now) {
+                   console.log("Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
+                   openWater({timeToRun: masterConfig.autoWateringDuration});
+               } else {
+                   console.log("Automatic watering cannot begin until " + nextAllowableWateringTime);
+               }
+           }
+        });
     }
 
     var toggle = function() {
@@ -140,7 +159,7 @@ var Server = function(port) {
           ctrlPin.on = false;
           switchWater(ctrlPin.pin, false);
        } else {
-          globalSocket.emit('message', "Running water for unlimited time");
+          globalSocketEmit('message', "Running water for unlimited time");
           ctrlPin.on = true;
           switchWater(ctrlPin.pin, true);
        }
@@ -149,7 +168,7 @@ var Server = function(port) {
     var openWater = function(data) {
        switchWater(ctrlPin.pin, true);
        ctrlPin.on = true;
-       globalSocket.emit('message', "Running water for " + (data.timeToRun / 1000) + " seconds");
+       globalSocketEmit('message', "Running water for " + (data.timeToRun / 1000) + " seconds");
        setTimeout(function() {
           switchWater(ctrlPin.pin, false);
           ctrlPin.on = false;
@@ -163,30 +182,33 @@ var Server = function(port) {
     
     var wateringStartTime;
     var switchWater = function(pin, bit) {
-          gpio.write(pin, bit, function(err) {
-            if (err) {
-               globalSocket.emit('errorMessage', err);
-               throw err;
-            }
+            isWatering = bit;
+//          gpio.write(pin, bit, function(err) {
+//            if (err) {
+//               globalSocketEmit('errorMessage', err);
+//               throw err;
+//            }
             if(bit) {
                wateringStartTime = new Date();
                setSafetyTimeout();
             } else {
                var wateringEndTime = new Date();
-               Db.saveWatering({wateringStartTime: wateringStartTime, duration: ((wateringEndTime.getTime() - wateringStartTime.getTime)/1000)});
+               var dataPoint = {wateringStartTime: wateringStartTime, duration: ((wateringEndTime.getTime() - wateringStartTime.getTime())/1000)};
+               Db.saveWatering(dataPoint);
+               globalSocketEmit("watering", dataPoint); 
                clearSafetyTimeout();
             }
-            globalSocket.emit('toggle', bit ? "Turn Water Off" : "Turn Water On");
-            globalSocket.emit('message', (bit ? "Opened" : "Closed") + " water valve");
+            globalSocketEmit('toggle', bit ? "Turn Water Off" : "Turn Water On");
+            globalSocketEmit('message', (bit ? "Opened" : "Closed") + " water valve");
             console.log((bit ? "Opened" : "Closed") + " water valve");
-          });
+//          });
     };
     
     var setSafetyTimeout = function() {
        maxTimer = setTimeout(function() {
           switchWater(ctrlPin.pin, false);
           ctrlPin.on = false;
-          globalSocket.emit('errorMessage', "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
+          globalSocketEmit('errorMessage', "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
           console.log("Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
        }, MAX_TIME_TO_RUN);
     };
@@ -195,8 +217,15 @@ var Server = function(port) {
        clearTimeout(maxTimer);
     };
 
+    var globalSocketEmit = function(topic, payload) {
+       if(globalSocket == undefined) {
+          setTimeout(function(){ globalSocketEmit(topic, payload); }, 200);
+       } else {
+          globalSocket.emit(topic, payload);
+       }
+    }
+
     io.on('connection', function(socket) {
-        console.log("connected");
         globalSocket = socket;
         socket.on('toggle', toggle);
         socket.on('open', openWater);

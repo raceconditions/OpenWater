@@ -13,7 +13,7 @@
         <script src='/socket.io/socket.io.js'></script>
         <script>
             var chartData = [];
-
+            var wateringGuides = [];
             var socket = io();
 
             socket.on('errorMessage', function(val) {
@@ -31,6 +31,10 @@
             });
             socket.on('sensor', function(dataPoint) {
                   addChartData(dataPoint);
+            });
+
+            socket.on('watering', function(dataPoint) {
+                  addWateringGuide(dataPoint);
             });
 
             socket.on('toggle', function(val) { document.getElementById('waterBtn').innerHTML = val; });
@@ -64,6 +68,19 @@
                 chart.validateData();
             }
 
+            function addWateringGuide(watering) {
+                wateringGuides.push( {
+                   "date": watering.wateringStartTime,
+                   "lineAlpha": 0.8,
+                   "lineColor": "#000",
+                   "label": Math.round(watering.duration) + " seconds",
+                   "labelRotation": 90,
+                   "position": "top",
+                   "inside": true
+               } );
+               chart.validateData();
+            }
+
             var chart = AmCharts.makeChart( "chartdiv", {
                 "type": "serial",
                 "theme": "light",
@@ -78,7 +95,8 @@
                   "minPeriod": "ss",
                   "dashLength": 1,
                   "gridAlpha": 0.15,
-                  "axisColor": "#DADADA"
+                  "axisColor": "#DADADA",
+                  "guides": wateringGuides
                 },
                 "graphs": [ ],
                 "chartCursor": {
@@ -99,7 +117,8 @@
                   sensorPollingFrequency: parseInt($("#sensorPollingFrequency").val()),
                   autoWatering: $("#autoWatering").prop("checked"),
                   autoWateringDuration: parseInt($("#autoWateringDuration").val()),
-                  autoWateringThreshold: parseInt($("#autoWateringThreshold").val())
+                  autoWateringThreshold: parseInt($("#autoWateringThreshold").val()),
+                  autoWateringIntervalWaitTime: parseInt($("#autoWateringIntervalWaitTime").val())
                }));
             };
 
@@ -109,6 +128,20 @@
                      chartData.push(data[i]);
                   chart.validateData();
                });
+               $.get( "/watering", function( data ) {
+                  for(var i = 0; i < data.length; i++)
+                     wateringGuides.push({
+                        "date": data[i].wateringStartTime,
+                        "lineAlpha": 0.8,
+                        "lineColor": "#000",
+                        "label": Math.round(data[i].duration) + " seconds",
+                        "labelRotation": 90,
+                        "position": "top",
+                        "inside": true
+                     });
+
+                  chart.validateNow();
+               });
                $.get( "/config", function( data ) { console.log(data.sensorCount);
                   for(var i = 1; i <= data.sensorCount; i++) addGraph(i);
                   $("#sensorCount").val(data.sensorCount);
@@ -116,6 +149,7 @@
                   $("#autoWatering").prop("checked", data.autoWatering);
                   $("#autoWateringDuration").val(data.autoWateringDuration);
                   $("#autoWateringThreshold").val(data.autoWateringThreshold);
+                  $("#autoWateringIntervalWaitTime").val(data.autoWateringIntervalWaitTime);
                });
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
                $("#sensorCount").change(updateConfig);
@@ -123,6 +157,7 @@
                $("#autoWatering").change(updateConfig)
                $("#autoWateringDuration").change(updateConfig);
                $("#autoWateringThreshold").change(updateConfig);
+               $("#autoWateringIntervalWaitTime").change(updateConfig);
             };
             window.onresize = function() {
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
@@ -189,6 +224,18 @@
                                 <option value="60000">1 minute</option>
                                 <option value="120000">2 minutes</option>
                                 <option value="300000">5 minutes</option>
+                              </select>
+                            </div>
+                        </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="autoWateringIntervalWaitTime">Minimum Time Between Auto Waterings</label></div>
+                            <div class="col-md-6 text-left">
+                              <select id="autoWateringIntervalWaitTime">
+                                 <option value="900000">15 minutes</option>
+                                 <option value="1800000">30 minutes</option>
+                                 <option value="3600000">60 minutes</option>
+                                 <option value="7200000">120 minutes</option>
+                                 <option value="14400000">240 minutes</option>
                               </select>
                             </div>
                         </div>
