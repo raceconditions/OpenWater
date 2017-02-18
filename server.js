@@ -74,6 +74,13 @@ var Server = function(port) {
            Db.getWaterings(d, function(data) {
                res.end(JSON.stringify(data));
            });
+        } else if(req.url == "/events") {
+           res.writeHead(200, {'Content-Type': 'application/json'});
+           var d = new Date();
+           d.setDate(d.getDate() - 3);
+           Db.getEvents(d, function(data) {
+               res.end(JSON.stringify(data));
+           });
         } else if(req.url == "/config" && req.method == "GET") {
            res.writeHead(200, {'Content-Type': 'application/json'});
            res.end(JSON.stringify(masterConfig));
@@ -91,6 +98,9 @@ var Server = function(port) {
                startPolling();
                res.end();
            });
+        } else {
+           res.writeHead(404);
+           res.end();
         }
     });
     
@@ -98,10 +108,10 @@ var Server = function(port) {
 
     this.start = function () {
         app.listen(config.port);
-        console.log('listening on port ' + config.port);
-    };
+        self.emit('INFO', 'Web server started. Listening on port ' + config.port);
+    }; 
 
-    this.stop = function() {
+    this.jstop = function() {
     };
 
     this.write = function(buffer) {
@@ -130,8 +140,10 @@ var Server = function(port) {
     }
 
     var checkWateringThreshold = function(sensorValues) {
-        if(isWatering)
+        if(isWatering) {
+            self.emit("WARN", "Automatic watering will not start. Water is already started.");
             return;
+        }
         var total = 0;
         for(var i = 0; i < sensorValues.length; i++) {
             total += sensorValues[i];
@@ -143,12 +155,12 @@ var Server = function(port) {
                var nextAllowableWateringTime;
                if(lastWatering != null)
                    nextAllowableWateringTime = new Date(lastWatering.wateringStartTime.getTime() + masterConfig.autoWateringIntervalWaitTime);
-               console.log("Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
+               self.emit("INFO", "Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
                if(lastWatering == null || nextAllowableWateringTime.getTime() <= now) {
-                   console.log("Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
+                   self.emit("INFO", "Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
                    openWater({timeToRun: masterConfig.autoWateringDuration});
                } else {
-                   console.log("Automatic watering cannot begin until " + nextAllowableWateringTime);
+                   self.emit("WARN", "Automatic watering will not start. Cannot start automatic watering until " + nextAllowableWateringTime);
                }
            }
         });
@@ -157,9 +169,11 @@ var Server = function(port) {
     var toggle = function() {
        if(ctrlPin.on) {
           ctrlPin.on = false;
+          self.emit('INFO', "User triggered watering stop.");
           switchWater(ctrlPin.pin, false);
        } else {
           globalSocketEmit('message', "Running water for unlimited time");
+          self.emit('INFO', "User triggered watering start.");
           ctrlPin.on = true;
           switchWater(ctrlPin.pin, true);
        }
@@ -169,6 +183,7 @@ var Server = function(port) {
        switchWater(ctrlPin.pin, true);
        ctrlPin.on = true;
        globalSocketEmit('message', "Running water for " + (data.timeToRun / 1000) + " seconds");
+       self.emit("INFO", "Running water for " + (data.timeToRun / 1000) + " seconds");
        setTimeout(function() {
           switchWater(ctrlPin.pin, false);
           ctrlPin.on = false;
@@ -182,12 +197,13 @@ var Server = function(port) {
     
     var wateringStartTime;
     var switchWater = function(pin, bit) {
-            isWatering = bit;
-//          gpio.write(pin, bit, function(err) {
-//            if (err) {
-//               globalSocketEmit('errorMessage', err);
-//               throw err;
-//            }
+          isWatering = bit;
+          gpio.write(pin, bit, function(err) {
+            if (err) {
+               globalSocketEmit('errorMessage', err);
+               self.emit("ERROR", "FAILED to write to GPIO pin: " + err);
+               throw err;
+            }
             if(bit) {
                wateringStartTime = new Date();
                setSafetyTimeout();
@@ -200,8 +216,8 @@ var Server = function(port) {
             }
             globalSocketEmit('toggle', bit ? "Turn Water Off" : "Turn Water On");
             globalSocketEmit('message', (bit ? "Opened" : "Closed") + " water valve");
-            console.log((bit ? "Opened" : "Closed") + " water valve");
-//          });
+            self.emit("INFO", (bit ? "Opened" : "Closed") + " water valve");
+          });
     };
     
     var setSafetyTimeout = function() {
@@ -209,7 +225,7 @@ var Server = function(port) {
           switchWater(ctrlPin.pin, false);
           ctrlPin.on = false;
           globalSocketEmit('errorMessage', "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
-          console.log("Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
+          self.emit("WARN", "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
        }, MAX_TIME_TO_RUN);
     };
     
@@ -218,11 +234,7 @@ var Server = function(port) {
     };
 
     var globalSocketEmit = function(topic, payload) {
-       if(globalSocket == undefined) {
-          setTimeout(function(){ globalSocketEmit(topic, payload); }, 200);
-       } else {
-          globalSocket.emit(topic, payload);
-       }
+        io.emit(topic, payload);
     }
 
     io.on('connection', function(socket) {

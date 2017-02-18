@@ -151,6 +151,9 @@
                   $("#autoWateringThreshold").val(data.autoWateringThreshold);
                   $("#autoWateringIntervalWaitTime").val(data.autoWateringIntervalWaitTime);
                });
+               $.get( "/events", function( data ) {
+                  buildHtmlTable("#eventsTable", data);
+               });
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
                $("#sensorCount").change(updateConfig);
                $("#sensorPollingFrequency").change(updateConfig);
@@ -163,11 +166,54 @@
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
             }
         </script>
+        <script>
+           // Builds the HTML Table out of data.
+           function buildHtmlTable(selector, data) {
+             var columns = addAllColumnHeaders(data, selector);
+           
+             for (var i = 0; i < data.length; i++) {
+               var row$ = $('<tr/>');
+               for (var colIndex = 0; colIndex < columns.length; colIndex++) {
+                 var cellValue = data[i][columns[colIndex]];
+                 if (cellValue == null) cellValue = "";
+                 row$.append($('<td/>').html(cellValue));
+               }
+               $(selector).append(row$);
+             }
+           }
+           
+           // Adds a header row to the table and returns the set of columns.
+           // Need to do union of keys from all records as some records may not contain
+           // all records.
+           function addAllColumnHeaders(data, selector) {
+             var columnSet = [];
+             var headerTr$ = $('<tr/>');
+           
+             for (var i = 0; i < data.length; i++) {
+               var rowHash = data[i];
+               for (var key in rowHash) {
+                 if ($.inArray(key, columnSet) == -1) {
+                   columnSet.push(key);
+                   headerTr$.append($('<th/>').html(key));
+                 }
+               }
+             }
+             $(selector).append(headerTr$);
+           
+             return columnSet;
+           }
+        </script>
         <style type="text/css">
                 .top-buffer { margin-top:20px; }
                 #chartdiv {
                     width: 100%;
                     height: 600px;
+                }
+                #eventsTable td {
+                    padding: 0px 5px;
+                }
+                #eventsTable th {
+                    padding: 0px 5px;
                 }
         </style>
         </head>
@@ -176,6 +222,7 @@
                 <li class="active"><a data-toggle="tab" href="#status">Status</a></li>
                 <li><a data-toggle="tab" href="#watering">Watering</a></li>
                 <li><a data-toggle="tab" href="#config">Configuration</a></li>
+                <li><a data-toggle="tab" href="#events">Events</a></li>
             </ul>
             <div class="tab-content">
                <div id="status" class="tab-pane fade in active">
@@ -255,6 +302,11 @@
                               </select>
                             </div>
                         </div>
+                    </div>
+               </div>
+               <div id="events" class="tab-pane fade">
+                    <div class="container">
+                        <table id="eventsTable" cellpadding="2px" border="0"></table>
                     </div>
                </div>
            </div>

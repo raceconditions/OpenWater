@@ -30,10 +30,11 @@ var Arduino = function(device) {
     this.start = function() {
         serialDevice.open(function (err) {
             if(err == null) {
-                console.log('OPENED serial connection to device:', device);
+                self.emit("INFO", 'OPENED serial connection to device: ' + device);
                 self.emit('serialready');
             } else {
-                console.log('FAILED to open serial connection:', err);
+                self.emit("ERROR", 'FAILED to open serial connection:', err);
+                setTimeout(this.start, 5000);
             }
         });
 
@@ -44,14 +45,15 @@ var Arduino = function(device) {
 
     this.stop = function() {
 	serialDevice.close(function() {
-	    console.log('CLOSED serial connection to device:', device);
+	    self.emit("INFO", 'CLOSED serial connection to device:', device);
 	});
     };
 
     this.write = function(buffer) {
 	serialDevice.write(buffer, function(err){
-	    if(err != undefined) 
-		console.log(err);
+	    if(err != undefined) {
+		self.emit("ERROR", 'FAILED to write to serial device:', err);
+            }
 	});
     };
 

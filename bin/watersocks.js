@@ -21,9 +21,15 @@ var Db = require('../db.js');
 
 var config = new Config().readConfiguration();
 
+var log = function(level, message) {
+    console.log(level + ": " + message);
+    Db.saveEvent({'level': level, 'message': message});
+};
+
 process.on('uncaughtException', function(err) {
+    log("EXCEPTION", err);
     if(err.errno === 'EADDRINUSE')
-         console.log("ERROR: An existing process is already listening on port", config.port);
+         log("ERROR", "An existing process is already listening on port " + config.port);
     else
          throw err;
     process.exit(1);
@@ -46,6 +52,30 @@ arduino.on('data', function(buffer) {
 
 arduino.on('serialready', function() {
     server.onSerialReady();
+});
+
+server.on("INFO", function(message) {
+    log("INFO", message);
+});
+
+server.on("WARN", function(message) {
+    log("WARN", message);
+});
+
+server.on("ERROR", function(message) {
+    log("ERROR", message);
+});
+
+arduino.on("INFO", function(message) {
+    log("INFO", message);
+});
+
+arduino.on("WARN", function(message) {
+    log("WARN", message);
+});
+
+arduino.on("ERROR", function(message) {
+    log("ERROR", message);
 });
 
 arduino.start();

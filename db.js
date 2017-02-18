@@ -21,6 +21,7 @@ var Db = function() {
     db.moisture = new Datastore({ filename: 'moisture.db', autoload: true, timestampData: true }),
     db.watering = new Datastore({ filename: 'watering.db', autoload: true, timestampData: true }),
     db.config = new Datastore({ filename: 'config.db', autoload: true, timestampData: true });
+    db.events = new Datastore({ filename: 'events.db', autoload: true, timestampData: true });
 
     db.config.find({category: "master"}, function(err, docs) {
         if(docs.length < 1) { console.log("seeding");
@@ -74,6 +75,17 @@ var Db = function() {
              return callback(docs);
         });
     };
+
+    this.saveEvent = function(event) {
+        db.events.insert(event);
+    };
+
+    this.getEvents = function(date, callback) {
+        db.events.find({createdAt: {$gte: date}}).sort({createdAt: 1}).exec(function(err, docs) {
+             return callback(docs);
+        });
+    };
+
 };
 
 module.exports = new Db();
