@@ -14,10 +14,10 @@
  * Lesser General Public License for more details.
  */
 
+var Db = require('../db.js');
 var Server = require('../server.js');
 var Arduino = require('../arduino.js');
 var Config = require('../config.js');
-var Db = require('../db.js');
 
 var config = new Config().readConfiguration();
 
@@ -28,11 +28,7 @@ var log = function(level, message) {
 
 process.on('uncaughtException', function(err) {
     log("EXCEPTION", err);
-    if(err.errno === 'EADDRINUSE')
-         log("ERROR", "An existing process is already listening on port " + config.port);
-    else
-         throw err;
-    process.exit(1);
+    setTimeout(function(){process.exit(1)}, 1000);
 });
 
 var server = new Server(config.port);

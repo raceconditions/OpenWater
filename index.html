@@ -153,6 +153,9 @@
                });
                $.get( "/events", function( data ) {
                   buildHtmlTable("#eventsTable", data);
+                  $('td.createdAt').each(function() {
+                     $(this).html(new Date($(this).text()).toLocaleString("en-US"));
+                  });
                });
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
                $("#sensorCount").change(updateConfig);
@@ -176,7 +179,7 @@
                for (var colIndex = 0; colIndex < columns.length; colIndex++) {
                  var cellValue = data[i][columns[colIndex]];
                  if (cellValue == null) cellValue = "";
-                 row$.append($('<td/>').html(cellValue));
+                 row$.append($('<td/>').html(cellValue).addClass(columns[colIndex]));
                }
                $(selector).append(row$);
              }
@@ -194,7 +197,7 @@
                for (var key in rowHash) {
                  if ($.inArray(key, columnSet) == -1) {
                    columnSet.push(key);
-                   headerTr$.append($('<th/>').html(key));
+                   headerTr$.append($('<th/>').html(key.replace(/([a-z0-9](?=[A-Z]))/g, '$1 ')).addClass(key));
                  }
                }
              }
@@ -214,6 +217,10 @@
                 }
                 #eventsTable th {
                     padding: 0px 5px;
+                    text-transform: capitalize
+                }
+                th._id, td._id, th.updatedAt, td.updatedAt {
+                    display: none;
                 }
         </style>
         </head>
