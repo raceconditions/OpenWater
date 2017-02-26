@@ -37,7 +37,16 @@
                   addWateringGuide(dataPoint);
             });
 
-            socket.on('toggle', function(val) { document.getElementById('waterBtn').innerHTML = val; });
+            socket.on('toggle', function(val) {
+                  console.log("toggle: " + val);
+                  if(val) {
+                       document.getElementById('waterBtn').innerHTML = "Turn Water Off";
+                       $("#waterImage").show("fast");
+                  } else {
+                       document.getElementById('waterBtn').innerHTML = "Turn Water On";
+                       $("#waterImage").hide("fast");
+                  }
+            });
 
             function toggle() {
                socket.emit('toggle', {});
@@ -47,6 +56,17 @@
                 var e = document.getElementById("time");
                 var timeToRun = e.options[e.selectedIndex].value;
                 socket.emit('open', {timeToRun: timeToRun});
+                $("#timerDiv").show(); 
+                $("#timer").text(timeToRun / 1000)
+                var timer = setInterval(function() {
+                  var counter = parseInt($("#timer").text());
+                  if(counter == 0) {
+                      $("#timerDiv").hide();
+                      clearInterval(timer);
+                  } else {
+                      $("#timer").text(counter - 1)
+                  }
+                }, 1000);
             }
 
             function addGraph(sensorIndex) {
@@ -157,6 +177,7 @@
                      $(this).html(new Date($(this).text()).toLocaleString("en-US"));
                   });
                });
+               document.getElementById("waterImage").style.height = (window.innerHeight - 400) + 'px';
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
                $("#sensorCount").change(updateConfig);
                $("#sensorPollingFrequency").change(updateConfig);
@@ -166,6 +187,7 @@
                $("#autoWateringIntervalWaitTime").change(updateConfig);
             };
             window.onresize = function() {
+               document.getElementById("waterImage").style.height = (window.innerHeight - 400) + 'px';
                document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
             }
         </script>
@@ -252,6 +274,10 @@
                               <option value="300000">5 minutes</option>
                             </select>
                             <button type="button" name="waterTimed" id="waterTimed" onclick="timedOn()">Run Water</button>
+                        </div> 
+                        <div class="row text-center top-buffer">
+                            <div id="timerDiv" style="display: none"><span id="timer"></span> seconds remaining</div>
+                            <img id="waterImage" src='http://www.animated-gifs.eu/category_nature/nature-water/0018.gif' style="display: none" />
                         </div>
                         <div class="row text-center top-buffer">
                             <ul id='messages' style="list-style: none;"></ul>

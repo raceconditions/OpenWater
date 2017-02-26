@@ -16,6 +16,7 @@
 
 var Db = require('../db.js');
 var Server = require('../server.js');
+var Water = require('../water.js');
 var Arduino = require('../arduino.js');
 var Config = require('../config.js');
 
@@ -27,27 +28,41 @@ var log = function(level, message) {
 };
 
 process.on('uncaughtException', function(err) {
+    throw err;
     log("EXCEPTION", err);
     setTimeout(function(){process.exit(1)}, 1000);
 });
 
-var server = new Server(config.port);
+var water = new Water(Db);
+var server = new Server(config.port, water, Db);
 var arduino = new Arduino(config.device);
 
 server.on('data', function(buffer) {
     arduino.write(buffer);
 });
 
-server.on('readsensors', function(buffer) {
-    arduino.write(buffer);
-});
-
 arduino.on('data', function(buffer) {
-    server.write(buffer);
+    water.write(buffer);
 });
 
 arduino.on('serialready', function() {
-    server.onSerialReady();
+    water.onSerialReady();
+});
+
+water.on('readsensors', function(buffer) {
+    arduino.write(buffer);
+});
+
+water.on('watering', function(data) {
+    server.onWatering(data);
+});
+
+water.on('toggle', function(bit) {
+    server.onToggle(bit);
+});
+
+water.on('sensordata', function(data) {
+    server.onSensorData(data);
 });
 
 server.on("INFO", function(message) {
@@ -59,6 +74,18 @@ server.on("WARN", function(message) {
 });
 
 server.on("ERROR", function(message) {
+    log("ERROR", message);
+});
+
+water.on("INFO", function(message) {
+    log("INFO", message);
+});
+
+water.on("WARN", function(message) {
+    log("WARN", message);
+});
+
+water.on("ERROR", function(message) {
     log("ERROR", message);
 });
 
@@ -75,4 +102,5 @@ arduino.on("ERROR", function(message) {
 });
 
 arduino.start();
+water.start();
 server.start();

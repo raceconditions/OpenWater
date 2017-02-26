@@ -18,10 +18,10 @@ var Db = function() {
 
     var self = this;
     var db = {};
-    db.moisture = new Datastore({ filename: 'moisture.db', autoload: true, timestampData: true }),
-    db.watering = new Datastore({ filename: 'watering.db', autoload: true, timestampData: true }),
-    db.config = new Datastore({ filename: 'config.db', autoload: true, timestampData: true });
-    db.events = new Datastore({ filename: 'events.db', autoload: true, timestampData: true });
+    db.moisture = new Datastore({ filename: 'data/moisture.db', autoload: true, timestampData: true }),
+    db.watering = new Datastore({ filename: 'data/watering.db', autoload: true, timestampData: true }),
+    db.config = new Datastore({ filename: 'data/config.db', autoload: true, timestampData: true });
+    db.events = new Datastore({ filename: 'data/events.db', autoload: true, timestampData: true });
 
     db.config.find({category: "master"}, function(err, docs) {
         if(docs.length < 1) { console.log("seeding");
