@@ -120,7 +120,7 @@ var Water = function(db) {
                self.emit("INFO", "Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
                if(lastWatering == null || nextAllowableWateringTime.getTime() <= now) {
                    self.emit("INFO", "Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
-                   openWater({timeToRun: masterConfig.autoWateringDuration});
+                   self.openWater({timeToRun: masterConfig.autoWateringDuration});
                } else {
                    self.emit("WARN", "Automatic watering will not start. Cannot start automatic watering until " + nextAllowableWateringTime);
                }
