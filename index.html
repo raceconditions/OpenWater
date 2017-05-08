@@ -15,6 +15,7 @@
             var chartData = [];
             var wateringGuides = [];
             var socket = io();
+            var solenoids = [];
 
             socket.on('errorMessage', function(val) {
                   var ul = document.getElementById("messages");
@@ -49,13 +50,17 @@
             });
 
             function toggle() {
-               socket.emit('toggle', {});
+                var s = document.getElementById("solenoid");
+                var pin = s.options[s.selectedIndex].value;
+                socket.emit('toggle', {pin: pin});
             }
 
             function timedOn() {
                 var e = document.getElementById("time");
                 var timeToRun = e.options[e.selectedIndex].value;
-                socket.emit('open', {timeToRun: timeToRun});
+                var s = document.getElementById("solenoid");
+                var pin = s.options[s.selectedIndex].value;
+                socket.emit('open', {timeToRun: timeToRun, pin: pin});
                 $("#timerDiv").show(); 
                 $("#timer").text(timeToRun / 1000)
                 var timer = setInterval(function() {
@@ -171,6 +176,20 @@
                   $("#autoWateringThreshold").val(data.autoWateringThreshold);
                   $("#autoWateringIntervalWaitTime").val(data.autoWateringIntervalWaitTime);
                });
+               $.get( "/solenoids", function( data ) {
+                  var sel = document.getElementById('solenoid');
+                  var opt = document.createElement('option');
+                  opt.innerHTML = "All";
+                  opt.value = "";
+                  sel.appendChild(opt);
+
+                  for(var i = 0; i < data.length; i++) {
+                     var opt = document.createElement('option');
+                     opt.innerHTML = data[i].name;
+                     opt.value = data[i].pin;
+                     sel.appendChild(opt);
+                  }
+               });
                $.get( "/events", function( data ) {
                   buildHtmlTable("#eventsTable", data);
                   $('td.createdAt').each(function() {
@@ -261,6 +280,11 @@
                </div>
                <div id="watering" class="tab-pane fade">
                     <div class="container">
+                        <div class="row text-center top-buffer">
+                            <label for="solenoid">Zone: </label>
+                            <select id="solenoid">
+                            </select>
+                        </div> 
                         <div class="row text-center top-buffer">
                             <button type="button" name="waterBtn" id="waterBtn" onclick="toggle()">Turn Water On</button>
                         </div>

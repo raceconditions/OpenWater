@@ -36,6 +36,7 @@
     "nedb": "^1.8.0",
     "rpi-gpio": "^0.7.0",
     "serialport": "~4.0.1",
-    "socket.io": "^1.7.2"
+    "socket.io": "^1.7.2",
+    "stats-lite": "^2.0.4"
   }
 }

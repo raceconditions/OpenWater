@@ -14,6 +14,8 @@
 
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
+var Solenoid = require('./solenoid.js');
+var stats = require("stats-lite");
 
 /* 
   EMITS EVENTS: 
@@ -27,21 +29,27 @@ var Water = function(db) {
     var gpio = require('rpi-gpio');
     
     var MAX_TIME_TO_RUN = 600000; //10 minutes
-    var ctrlPin = { pin: '16', gpio: '23', on: false };
-    var waterOn = false;
-    var maxTimer;
     var masterConfig;
     var serialReady = false;
     var configReady = false;
     var sensorPolling;
-    var isWatering = false;
     var wateringStartTime;
+    var solenoids = [];
+    var solenoidPins = [
+      {pin: '16', name: 'Right', gpio: '23'},
+      {pin: '18', name: 'Left', gpio: '24'}
+    ];
 
     var self = this;
 
     this.start = function() {
         getConfig();
-        gpio.setup(16, gpio.DIR_OUT);
+
+        for(var i = 0; i < solenoidPins.length; i++) {
+           thisSolenoid = new Solenoid(db, solenoidPins[i].pin);
+           solenoids[solenoidPins[i].pin] = thisSolenoid;
+           setupSolenoid(thisSolenoid);
+        }
     }
 
     this.write = function(buffer) {
@@ -69,31 +77,34 @@ var Water = function(db) {
         startPolling(); 
     }
 
-    this.toggle = function() {
-       if(ctrlPin.on) {
-          ctrlPin.on = false;
-          self.emit('INFO', "User triggered watering stop.");
-          switchWater(ctrlPin.pin, false);
+    this.toggle = function(data) {
+       if(data.pin) {
+          solenoids[data.pin].toggle(data);
        } else {
-          self.emit('INFO', "User triggered watering start.");
-          ctrlPin.on = true;
-          switchWater(ctrlPin.pin, true);
+          for(var i = 0; i < solenoidPins.length; i++) {
+             solenoids[solenoidPins[i].pin].toggle(data);
+          }
        }
     };
     
     this.openWater = function(data) {
-       switchWater(ctrlPin.pin, true);
-       ctrlPin.on = true;
-       self.emit("INFO", "Running water for " + (data.timeToRun / 1000) + " seconds");
-       setTimeout(function() {
-          switchWater(ctrlPin.pin, false);
-          ctrlPin.on = false;
-       }, data.timeToRun);
+       if(data.pin) {
+          solenoids[data.pin].openWater(data);
+       } else {
+          for(var i = 0; i < solenoidPins.length; i++) {
+             solenoids[solenoidPins[i].pin].openWater(data);
+          }
+       }
     }
     
     this.closeWater = function() {
-       switchWater(ctrlPin.pin, false);
-       ctrlPin.on = false;
+       if(data.pin) {
+          solenoids[data.pin].closeWater(data);
+       } else {
+          for(var i = 0; i < solenoidPins.length; i++) {
+             solenoids[solenoidPins[i].pin].closeWater(data);
+          }
+       }
     }
 
     this.updateConfig = function(config) {
@@ -101,23 +112,44 @@ var Water = function(db) {
        startPolling();
     }
  
+    this.getSolenoids = function() {
+       return solenoidPins;
+    }
+
+    var setupSolenoid = function(solenoid) {
+       solenoid.start();
+       solenoid.on("INFO", function(data) { self.emit("INFO", data); });    
+       solenoid.on("WARN", function(data) { self.emit("WARN", data); });
+       solenoid.on("ERROR", function(data) { self.emit("ERROR", data); });    
+       solenoid.on("toggle", function(data) { self.emit("toggle", data); });    
+       solenoid.on("watering", function(data) { self.emit("watering", data); });    
+    }
+
+    var anySolenoidsAreWatering = function() {
+       var watering = false;
+       for(var i = 0; i < solenoidPins.length; i++) {
+          if(solenoids[solenoidPins[i].pin].isWatering())
+             watering = true;
+       }
+       return watering;
+    }
+ 
     var checkWateringThreshold = function(sensorValues) {
-        if(isWatering) {
+        if(anySolenoidsAreWatering()) {
             self.emit("WARN", "Automatic watering will not start. Water is already started.");
             return;
         }
-        var total = 0;
-        for(var i = 0; i < sensorValues.length; i++) {
-            total += sensorValues[i];
-        }
-        var avgMoisture = total/sensorValues.length;
+        var madMean = getAverageWithoutOutliers(sensorValues);
+        var avgMoisture = madMean.mean;
         db.getLastWatering(function(lastWatering) {  
            var now = Date.now();
            if(masterConfig.autoWatering && avgMoisture <= masterConfig.autoWateringThreshold) {
                var nextAllowableWateringTime;
                if(lastWatering != null)
                    nextAllowableWateringTime = new Date(lastWatering.wateringStartTime.getTime() + masterConfig.autoWateringIntervalWaitTime);
-               self.emit("INFO", "Watering based on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
+               self.emit("INFO", "Watering recommended beased on average moisture of " + avgMoisture + " below watering threshold of " + masterConfig.autoWateringThreshold);
+               if(madMean.outliers.length > 0)
+                   self.emit("INFO", "Detected and ignored outliers in data set: " + madMean.outliers);
                if(lastWatering == null || nextAllowableWateringTime.getTime() <= now) {
                    self.emit("INFO", "Watering for " + (masterConfig.autoWateringDuration / 1000) + " seconds");
                    self.openWater({timeToRun: masterConfig.autoWateringDuration});
@@ -127,40 +159,25 @@ var Water = function(db) {
            }
         });
     }
-   
-    var switchWater = function(pin, bit) {
-          isWatering = bit;
-          gpio.write(pin, bit, function(err) {
-            if (err) {
-               self.emit("ERROR", "FAILED to write to GPIO pin: " + err);
-               throw err;
-            }
-            if(bit) {
-               wateringStartTime = new Date();
-               setSafetyTimeout();
+
+    var getAverageWithoutOutliers = function(array) {
+        var outliers = [];
+        var resultSet = [];
+
+        var median = stats.median(array);
+        var mad = stats.median(array.map(function(num) {
+            return Math.abs(num - median);
+        }));
+
+        for(var i = 0; i < array.length; i++) {
+            if(array[i] < median - mad || array[i] > median + mad) {
+               outliers.push(array[i]);
             } else {
-               var wateringEndTime = new Date();
-               var dataPoint = {wateringStartTime: wateringStartTime, duration: ((wateringEndTime.getTime() - wateringStartTime.getTime())/1000)};
-               db.saveWatering(dataPoint);
-               self.emit("watering", dataPoint); 
-               clearSafetyTimeout();
+               resultSet.push(array[i]);
             }
-            self.emit('toggle', bit);
-            self.emit("INFO", (bit ? "Opened" : "Closed") + " water valve");
-          });
-    };
-    
-    var setSafetyTimeout = function() {
-       maxTimer = setTimeout(function() {
-          switchWater(ctrlPin.pin, false);
-          ctrlPin.on = false;
-          self.emit("WARN", "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached");
-       }, MAX_TIME_TO_RUN);
-    };
-    
-    var clearSafetyTimeout = function() {
-       clearTimeout(maxTimer);
-    };
+        }
+        return {mean: stats.mean(resultSet), outliers: outliers};
+    }
 
     var startPolling = function() {
         if(serialReady && configReady) {

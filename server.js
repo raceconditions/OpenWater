@@ -76,6 +76,10 @@ var Server = function(port, water, db) {
            db.getConfig("master", function(data) {
                res.end(JSON.stringify(data));
            });
+        } else if(req.url == "/solenoids" && req.method == "GET") {
+           res.writeHead(200, {'Content-Type': 'application/json'});
+           var solenoids = water.getSolenoids(); 
+           res.end(JSON.stringify(solenoids));
         } else if(req.url == "/config" && req.method == "POST") {
            res.writeHead(200);
            var jsonString = '';
