@@ -80,6 +80,21 @@ var Server = function(port, water, db) {
            res.writeHead(200, {'Content-Type': 'application/json'});
            var solenoids = water.getSolenoids(); 
            res.end(JSON.stringify(solenoids));
+        } else if(req.url == "/moisture/last" && req.method == "GET") {
+           res.writeHead(200, {'Content-Type': 'application/json'});
+           db.getLastSensorValue(function(sensors) {
+               res.end(JSON.stringify(sensors));
+           }); 
+        } else if(/^\/open\/(\d+|all)\/time\/\d+/.test(req.url) && req.method == "GET") {
+           var params = /^\/open\/(\d+|all)\/time\/(\d+)/g.exec(req.url);
+           res.writeHead(200, {'Content-Type': 'application/json'});
+           var pin = params[1];
+           var timeToRun = params[2];
+           if(pin.toLowerCase() == "all")
+              water.openWater({timeToRun: timeToRun});           
+           else
+              water.openWater({timeToRun: timeToRun, pin: pin});           
+           res.end();
         } else if(req.url == "/config" && req.method == "POST") {
            res.writeHead(200);
            var jsonString = '';
@@ -94,7 +109,24 @@ var Server = function(port, water, db) {
                water.updateConfig(config);
                res.end();
            });
-        } else {
+        } else if(req.url == "/findSensors" && req.method == "POST") {
+           res.writeHead(200);
+           var jsonString = '';
+
+           req.on('data', function (data) {
+               jsonString += data;
+           });
+           req.on('end', function () {
+               var config = JSON.parse(jsonString);
+               if(config.action == 'start') {
+                   water.findWaterSensorsStart(config.pollingFrequency);
+               } else {
+                   water.findWaterSensorsStop();
+               }
+               res.end();
+           });
+        }
+        else {
            res.writeHead(404);
            res.end();
         }

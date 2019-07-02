@@ -22,7 +22,16 @@ var Db = function() {
     db.watering = new Datastore({ filename: 'data/watering.db', autoload: true, timestampData: true }),
     db.config = new Datastore({ filename: 'data/config.db', autoload: true, timestampData: true });
     db.events = new Datastore({ filename: 'data/events.db', autoload: true, timestampData: true });
+    db.temperature = new Datastore({ filename: 'data/temperature.db', autoload: true, timestampData: true });
 
+    db.moisture.ensureIndex({ fieldName: 'createdAt', expireAfterSeconds: 7890000 }, function(err) { if(err) console.log(err); });
+    db.watering.ensureIndex({ fieldName: 'createdAt', expireAfterSeconds: 7890000 }, function(err) { if(err) console.log(err); });
+    db.events.ensureIndex({ fieldName: 'createdAt', expireAfterSeconds: 7890000 }, function(err) { if(err) console.log(err); });
+    db.temperature.ensureIndex({ fieldName: 'createdAt', expireAfterSeconds: 7890000 }, function(err) { if(err) console.log(err); });
+
+
+console.log("db ready");
+/*
     db.config.find({category: "master"}, function(err, docs) {
         if(docs.length < 1) { console.log("seeding");
             db.config.insert({
@@ -32,10 +41,14 @@ var Db = function() {
                 autoWatering: true, 
                 autoWateringThreshold: 1, 
                 autoWateringDuration: 60000,
-                autoWateringIntervalWaitTime: 7200000
+                autoWateringIntervalWaitTime: 86400000,
+                moistureDeviationFactor: 1
             });
+        } else {
+            console.log("config already seeded");
         }
     });
+*/
 
     this.saveConfig = function(category, config) {
         console.log("Category: " + category);
@@ -57,6 +70,28 @@ var Db = function() {
     this.getSensorValues = function(date, callback) {
         db.moisture.find({createdAt: {$gte: date}}).sort({createdAt: 1}).exec(function(err, docs) {
              return callback(docs);
+        });
+    };
+
+    this.getLastSensorValue = function(callback) {
+        db.moisture.findOne({}).sort({createdAt: -1}).exec(function(err, doc) {
+             return callback(doc);
+        });
+    };
+
+    this.saveTemperatureValues = function(dataPoint) {
+        db.temperature.insert(dataPoint);
+    };
+
+    this.getTemperatureValues = function(date, callback) {
+        db.temperature.find({createdAt: {$gte: date}}).sort({createdAt: 1}).exec(function(err, docs) {
+             return callback(docs);
+        });
+    };
+
+    this.getLastTemperatureValue = function(callback) {
+        db.temperature.findOne({}).sort({createdAt: -1}).exec(function(err, doc) {
+             return callback(doc);
         });
     };
 

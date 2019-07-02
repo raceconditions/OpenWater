@@ -32,7 +32,11 @@ var Water = function(db) {
     var masterConfig;
     var serialReady = false;
     var configReady = false;
+    var pollWithoutTracking = false;
     var sensorPolling;
+    var temperaturePolling;
+    var findSensorsPolling;
+    var maxFindSensorsTimer;
     var wateringStartTime;
     var solenoids = [];
     var solenoidPins = [
@@ -52,11 +56,30 @@ var Water = function(db) {
         }
     }
 
+    this.findWaterSensorsStart = function(pollingFrequency) {
+        pollWithoutTracking = true;
+        if(serialReady) {
+             console.log('starting find sensors with frequency ' + pollingFrequency);
+             clearInterval(findSensorsPolling);
+             findSensorsPolling = setInterval(function(){self.emit("readsensors", "M" + masterConfig.sensorCount)}, pollingFrequency);
+             setSafetyFindSensorsTimeout();
+        }    
+    }
+
+    this.findWaterSensorsStop = function() {
+        console.log('stopping find sensors');
+        pollWithoutTracking = false;
+        clearInterval(findSensorsPolling);
+        clearSafetyFindSensorsTimeout();
+    }
+
     this.write = function(buffer) {
         var dataSet = {date: new Date()};
         var sensorValues = [];
 	var bufferData = buffer.toString('utf8').trim();
-	if(bufferData.charAt(0) == "M") {
+        var dataType = bufferData.charAt(0);
+        console.log("received data of type " + dataType);
+	if(dataType == "M") {
             var sensors = bufferData.split(/\r\n/);
             for(var i = 0; i < sensors.length; i++) {
                var moistureInfo = sensors[i].split(":");
@@ -65,11 +88,27 @@ var Water = function(db) {
                dataSet["moistureValue" + sensor] = value;
                sensorValues.push(value);
             }
-            db.saveSensorValues(dataSet);
+            //save and check autowatering only in regular state
+            if(!pollWithoutTracking) {
+               db.saveSensorValues(dataSet);
+               checkWateringThreshold(sensorValues);
+            }
             dataSet.createdAt = new Date();
             self.emit("sensordata", dataSet);
-            checkWateringThreshold(sensorValues);
+        } else if(dataType == "T") {
+            //console.log(bufferData);
+            var temperatureData = {};
+            var values = bufferData.split(/\r\n/);
+            for(var i = 0; i < values.length; i++) {
+               var info = values[i].split(":");
+	       var key = info[0].toLowerCase();
+	       var value = parseInt(info[1]);
+               temperatureData[key] = value;
+            }
+            //console.log(temperatureData);
+            db.saveTemperatureValues(temperatureData);
         }
+
     };
 
     this.onSerialReady = function() {
@@ -168,6 +207,7 @@ var Water = function(db) {
         var mad = stats.median(array.map(function(num) {
             return Math.abs(num - median);
         }));
+        mad = mad * masterConfig.moistureDeviationFactor;
 
         for(var i = 0; i < array.length; i++) {
             if(array[i] < median - mad || array[i] > median + mad) {
@@ -181,11 +221,14 @@ var Water = function(db) {
 
     var startPolling = function() {
         if(serialReady && configReady) {
+             console.log("starting to poll on frequency " + masterConfig.sensorPollingFrequency);
              clearInterval(sensorPolling);
+             clearInterval(temperaturePolling);
              sensorPolling = setInterval(function(){self.emit("readsensors", "M" + masterConfig.sensorCount)}, masterConfig.sensorPollingFrequency);
+             setTimeout(function() {temperaturePolling = setInterval(function(){self.emit("readsensors", "TC")}, masterConfig.sensorPollingFrequency);}, masterConfig.sensorPollingFrequency /2);
         }
     }
-    
+
     var getConfig = function() {
         db.getConfig("master", function(data) {
             masterConfig = data;
@@ -197,6 +240,17 @@ var Water = function(db) {
             }
         });
     }
+
+    var setSafetyFindSensorsTimeout = function() {
+       maxFindSensorsTimer = setTimeout(function() {
+          self.findWaterSensorsStop();
+          self.emit("WARN", "Safety timeout of " + (MAX_TIME_TO_RUN / 1000) + " seconds was reached on find sensors run.");
+       }, MAX_TIME_TO_RUN);
+    };
+
+    var clearSafetyFindSensorsTimeout = function() {
+       clearTimeout(maxFindSensorsTimer);
+    };
 
 };
 

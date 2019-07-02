@@ -15,7 +15,7 @@
  */
 
 var Db = require('../db.js');
-var Server = require('../server.js');
+var Server = require('../server_express.js');
 var Water = require('../water.js');
 var Arduino = require('../arduino.js');
 var Config = require('../config.js');

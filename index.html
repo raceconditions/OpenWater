@@ -6,16 +6,30 @@
                 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
                 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
                 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+                <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+                <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
                 <script src="//www.amcharts.com/lib/3/amcharts.js"></script>
                 <script src="//www.amcharts.com/lib/3/serial.js"></script>
                 <script src="//www.amcharts.com/lib/3/themes/light.js"></script>
                 <title>Water Socks</title>
         <script src='/socket.io/socket.io.js'></script>
         <script>
-            var chartData = [];
-            var wateringGuides = [];
+        $.postJSON = function(url, data, success, dataType) {
+	    if (typeof data != 'string') {
+		data = JSON.stringify(data);
+            }
+            $.ajax({
+		url : url,
+		type: "post",
+		data: data,
+		dataType: dataType || "json",
+		contentType: "application/json",
+		success: success
+            });
+        }
+        </script>
+        <script>
             var socket = io();
-            var solenoids = [];
 
             socket.on('errorMessage', function(val) {
                   var ul = document.getElementById("messages");
@@ -30,8 +44,13 @@
                   li.appendChild(document.createTextNode(val));
                   ul.appendChild(li);
             });
-            socket.on('sensor', function(dataPoint) {
-                  addChartData(dataPoint);
+
+            socket.on('sensordata', function(dataPoint) {
+                  if(findSensorsIsStarted()) {
+                       addSensorValues(dataPoint);
+                  } else {
+                       addChartData(dataPoint);
+                  }
             });
 
             socket.on('watering', function(dataPoint) {
@@ -74,23 +93,64 @@
                 }, 1000);
             }
 
-            function addGraph(sensorIndex) {
+        </script>
+        <script>
+            /* AM CHARTS */
+            var sensorChartData = [];
+            var temperatureChartData = [];
+            var wateringGuides = [];
+
+            function addSensorGraph(sensorIndex) {
                 var graph = new AmCharts.AmGraph();
 
-                graph.title = "Sensor " + (chart.graphs.length + 1);
+                graph.title = "Sensor " + (sensorChart.graphs.length + 1);
                 graph.valueField = "moistureValue" + sensorIndex;
                 graph.balloonText = "[[title]]: [[value]]";
                 graph.lineThickness = 2;
 
-                chart.addGraph(graph);
+                sensorChart.addGraph(graph);
             }
 
+            function addTemperatureGraphs() {
+                var temperatureGraph = new AmCharts.AmGraph();
+
+                temperatureGraph.title = "Temperature";
+                temperatureGraph.valueField = "t";
+                temperatureGraph.balloonText = "[[title]]: [[value]]";
+                temperatureGraph.lineThickness = 2;
+
+                var humidityGraph = new AmCharts.AmGraph();
+
+                humidityGraph.title = "Humidity";
+                humidityGraph.valueField = "h";
+                humidityGraph.balloonText = "[[title]]: [[value]]";
+                humidityGraph.lineThickness = 2;
+
+                temperatureChart.addGraph(temperatureGraph);
+                temperatureChart.addGraph(humidityGraph);
+            }
+
+
             function addChartData(point) {
-                if(chartData.length > 50) {
-                     chartData.shift();
+                if(sensorChartData.length > 50) {
+                     sensorChartData.shift();
                 }
-                chartData.push(point);
-                chart.validateData();
+                sensorChartData.push(point);
+                sensorChart.validateData();
+            }
+
+            function addSensorValues(point) {
+                var sensorCount = 0;
+                $('#sensorReadingMessages').empty();
+                for(var key in point) {
+                    if(key.startsWith("moistureValue")) {
+                        sensorCount++;
+                        console.log(key + ": " + point[key]);
+                        $('<li>' + key.replace('moistureValue', 'Sensor ') + ": " + point[key] + '</li>').appendTo($('#sensorReadingMessages'));
+                    }
+                }
+                $("#findSensorDialog").dialog( "option", "height", 150 + (sensorCount * 21));
+                $("#findSensorDialog").dialog( "option", "position", { my: "center", at: "center", of: window });
             }
 
             function addWateringGuide(watering) {
@@ -103,17 +163,17 @@
                    "position": "top",
                    "inside": true
                } );
-               chart.validateData();
+               sensorChart.validateData();
             }
 
-            var chart = AmCharts.makeChart( "chartdiv", {
+            var sensorChart = AmCharts.makeChart( "sensorChart", {
                 "type": "serial",
                 "theme": "light",
                 "zoomOutButton": {
                   "backgroundColor": '#000000',
                   "backgroundAlpha": 0.15
                 },
-                "dataProvider": chartData,
+                "dataProvider": sensorChartData,
                 "categoryField": "createdAt",
                 "categoryAxis": {
                   "parseDates": true,
@@ -135,23 +195,62 @@
                 }
             });
 
+            var temperatureChart = AmCharts.makeChart( "temperatureChart", {
+                "type": "serial",
+                "theme": "light",
+                "zoomOutButton": {
+                  "backgroundColor": '#000000',
+                  "backgroundAlpha": 0.15
+                },
+                "dataProvider": temperatureChartData,
+                "categoryField": "createdAt",
+                "categoryAxis": {
+                  "parseDates": true,
+                  "minPeriod": "ss",
+                  "dashLength": 1,
+                  "gridAlpha": 0.15,
+                  "axisColor": "#DADADA"
+                },
+                "graphs": [ ],
+                "chartCursor": {
+                  "cursorPosition": "mouse"
+                },
+                "chartScrollbar": {
+                  "graph": "g1",
+                  "scrollbarHeight": 40,
+                  "color": "#FFFFFF",
+                  "autoGridCount": true
+                }
+            });
+
+
+        </script>
+        <script>
+            /* PAGE LOAD */
             var updateConfig = function() {
-               $.post("/config", JSON.stringify({
+               $.postJSON("/config", {
                   category: "master",
                   sensorCount: parseInt($("#sensorCount").val()),
                   sensorPollingFrequency: parseInt($("#sensorPollingFrequency").val()),
                   autoWatering: $("#autoWatering").prop("checked"),
                   autoWateringDuration: parseInt($("#autoWateringDuration").val()),
                   autoWateringThreshold: parseInt($("#autoWateringThreshold").val()),
-                  autoWateringIntervalWaitTime: parseInt($("#autoWateringIntervalWaitTime").val())
-               }));
+                  autoWateringIntervalWaitTime: parseInt($("#autoWateringIntervalWaitTime").val()),
+                  moistureDeviationFactor: parseInt($("#moistureDeviationFactor").val())
+               });
             };
 
             window.onload = function() {
                $.get( "/data", function( data ) {
                   for(var i = 0; i < data.length; i++)
-                     chartData.push(data[i]);
-                  chart.validateData();
+                     sensorChartData.push(data[i]);
+                  sensorChart.validateData();
+               });
+               $.get( "/temperature", function( data ) {
+                  for(var i = 0; i < data.length; i++)
+                     temperatureChartData.push(data[i]);
+                  temperatureChart.validateData();
+                  addTemperatureGraphs();
                });
                $.get( "/watering", function( data ) {
                   for(var i = 0; i < data.length; i++)
@@ -164,17 +263,17 @@
                         "position": "top",
                         "inside": true
                      });
-
-                  chart.validateNow();
+                  sensorChart.validateNow();
                });
                $.get( "/config", function( data ) { console.log(data.sensorCount);
-                  for(var i = 1; i <= data.sensorCount; i++) addGraph(i);
+                  for(var i = 1; i <= data.sensorCount; i++) addSensorGraph(i);
                   $("#sensorCount").val(data.sensorCount);
                   $("#sensorPollingFrequency").val(data.sensorPollingFrequency);
                   $("#autoWatering").prop("checked", data.autoWatering);
                   $("#autoWateringDuration").val(data.autoWateringDuration);
                   $("#autoWateringThreshold").val(data.autoWateringThreshold);
                   $("#autoWateringIntervalWaitTime").val(data.autoWateringIntervalWaitTime);
+                  $("#moistureDeviationFactor").val(data.moistureDeviationFactor);
                });
                $.get( "/solenoids", function( data ) {
                   var sel = document.getElementById('solenoid');
@@ -197,19 +296,65 @@
                   });
                });
                document.getElementById("waterImage").style.height = (window.innerHeight - 400) + 'px';
-               document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
+               document.getElementById("sensorChart").style.height = (window.innerHeight - 100) + 'px';
+               document.getElementById("temperatureChart").style.height = (window.innerHeight - 100) + 'px';
                $("#sensorCount").change(updateConfig);
                $("#sensorPollingFrequency").change(updateConfig);
                $("#autoWatering").change(updateConfig)
                $("#autoWateringDuration").change(updateConfig);
                $("#autoWateringThreshold").change(updateConfig);
+               $("#moistureDeviationFactor").change(updateConfig);
                $("#autoWateringIntervalWaitTime").change(updateConfig);
             };
             window.onresize = function() {
                document.getElementById("waterImage").style.height = (window.innerHeight - 400) + 'px';
-               document.getElementById("chartdiv").style.height = (window.innerHeight - 100) + 'px';
+               document.getElementById("sensorChart").style.height = (window.innerHeight - 100) + 'px';
+               document.getElementById("temperatureChart").style.height = (window.innerHeight - 100) + 'px';
+            }
+
+            $( function() {
+                $( "#findSensorDialog" ).dialog({
+                    autoOpen: false,
+                    modal: true,
+                    width: 300,
+                    height: 150,
+                    show: {
+                        effect: "puff",
+                        duration: 500
+                    },
+                    hide: {
+                        effect: "explode",
+                        duration: 500
+                    }
+                 });
+ 
+                $( "#findSensorDialogButton" ).on( "click", function() {
+                    $( "#findSensorDialog" ).dialog( "open" );
+                });
+            });
+
+            function findSensorsIsStarted() {
+                return ($("#findSensors").attr('data-start') == 'started');
+            }
+
+            function findSensors() {
+                var action = '';
+                if(findSensorsIsStarted()) {
+                    action = 'stop';
+                    $("#findSensors").attr('data-start', 'stopped')
+                    $("#findSensors").text("Find Sensors Start");
+                } else {
+                    action = 'start';
+                    $("#findSensors").attr('data-start', 'started')
+                    $("#findSensors").text("Find Sensors Stop");
+                }
+                $.postJSON("/findSensors", {
+                    action: action,
+                    pollingFrequency: parseInt($("#findSensorPollingFrequency").val())
+                });
             }
         </script>
+
         <script>
            // Builds the HTML Table out of data.
            function buildHtmlTable(selector, data) {
@@ -249,7 +394,7 @@
         </script>
         <style type="text/css">
                 .top-buffer { margin-top:20px; }
-                #chartdiv {
+                #sensorChart {
                     width: 100%;
                     height: 600px;
                 }
@@ -263,19 +408,30 @@
                 th._id, td._id, th.updatedAt, td.updatedAt {
                     display: none;
                 }
+                ul {
+                    list-style:none;
+                    padding-left:0;
+                }
         </style>
         </head>
         <body>
             <ul class="nav nav-tabs">
                 <li class="active"><a data-toggle="tab" href="#status">Status</a></li>
-                <li><a data-toggle="tab" href="#watering">Watering</a></li>
-                <li><a data-toggle="tab" href="#config">Configuration</a></li>
+                <li><a data-toggle="tab" href="#watering">Water</a></li>
+                <li><a data-toggle="tab" href="#temperature">Air</a></li>
+                <li><a data-toggle="tab" href="#config">Config</a></li>
                 <li><a data-toggle="tab" href="#events">Events</a></li>
             </ul>
             <div class="tab-content">
                <div id="status" class="tab-pane fade in active">
                     <div class="container">
-                        <div id="chartdiv"></div>
+                        <div id="sensorChart"></div>
+                        <div class="text-center"><a href="#" id="findSensorDialogButton">Find Sensors</a></div>
+                    </div>
+               </div>
+               <div id="temperature" class="tab-pane fade in active">
+                    <div class="container">
+                        <div id="temperatureChart"></div>
                     </div>
                </div>
                <div id="watering" class="tab-pane fade">
@@ -307,7 +463,7 @@
                             <ul id='messages' style="list-style: none;"></ul>
                         </div>
                     </div>
-                </div>
+               </div>
                <div id="config" class="tab-pane fade">
                     <div class="container">
                         <div class="row text-center top-buffer">
@@ -335,11 +491,12 @@
                             <div class="col-md-6 text-right"><label for="autoWateringIntervalWaitTime">Minimum Time Between Auto Waterings</label></div>
                             <div class="col-md-6 text-left">
                               <select id="autoWateringIntervalWaitTime">
-                                 <option value="900000">15 minutes</option>
-                                 <option value="1800000">30 minutes</option>
-                                 <option value="3600000">60 minutes</option>
-                                 <option value="7200000">120 minutes</option>
-                                 <option value="14400000">240 minutes</option>
+                                 <option value="3600000">1 hour</option>
+                                 <option value="7200000">2 hours</option>
+                                 <option value="14400000">4 hours</option>
+                                 <option value="28800000">8 hours</option>
+                                 <option value="43200000">12 hours</option>
+                                 <option value="86400000">24 hours</option>
                               </select>
                             </div>
                         </div>
@@ -359,12 +516,29 @@
                               </select>
                             </div>
                         </div>
+                        <div class="row text-center top-buffer">
+                            <div class="col-md-6 text-right"><label for="moistureDeviationFactor">Moisture Deviation Factor</label></div>
+                            <div class="col-md-6 text-left"><input type="text" name="moistureDeviationFactor" id="moistureDeviationFactor" /></div>
+                        </div>
                     </div>
                </div>
                <div id="events" class="tab-pane fade">
                     <div class="container">
                         <table id="eventsTable" cellpadding="2px" border="0"></table>
                     </div>
+               </div>
+           </div>
+           <div id="findSensorDialog" title="Find Sensors" class="text-center">
+               <label for="findSensorPollingFrequency">Frequency</label>
+               <select id="findSensorPollingFrequency">
+                    <option value="1000">1 second</option>
+                    <option value="2000">2 seconds</option>
+                    <option value="5000">5 seconds</option>
+                    <option value="10000">10 seconds</option>
+               </select>
+               <button type="button" name="findSensors" id="findSensors" onclick="findSensors()">Find Sensors Start</button>
+               <div class="text-center top-buffer">
+                    <ul id='sensorReadingMessages' style="list-style: none;"></ul>
                </div>
            </div>
         </body>
